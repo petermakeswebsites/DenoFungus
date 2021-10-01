@@ -1,5 +1,5 @@
 import {fcgi} from 'https://deno.land/x/fcgi/mod.ts';
-import type {ServerResponse} from 'https://deno.land/x/fcgi/mod.ts';
+import type {ServerResponse, ServerRequest} from 'https://deno.land/x/fcgi/mod.ts';
 import * as eta from 'https://deno.land/x/eta/mod.ts';
 
 console.log(`Started on 127.0.0.1:8989`);
@@ -23,8 +23,12 @@ fcgi.listen
         try {
             //Initializing or getting worker for this document root
             const worker = await getWorker(req.params.get("DOCUMENT_ROOT"))
+
             console.log('whats happening... ')
-            const res = (await worker.sendPromise({action: 'req', params: req.params, cookies: req.cookies})) as ServerResponse
+            const update = async (data : any) => {
+                return await handleUpdate(req, data)
+            }
+            const res = (await worker.sendPromise({action: 'req', params: req.params, cookies: req.cookies}, update)) as ServerResponse
             await req.respond(res)
             
         } catch(err) {
@@ -80,23 +84,44 @@ class PromiseWorker extends Worker {
     }
 
     private idCounter = 0
-    private callbackStore : {[id : number]: [(value : unknown) => any, (reason?: any) => any]} = {}
+    private callbackStore : {[id : number]: [(value : unknown) => any, (reason?: any) => any, (data : any) => any]} = {}
 
     private handleMessage(e : MessageEvent) {
         const id = e.data.id
         const error = e.data.error
+        const update = e.data.update || 0
+
         console.log('Error: ', error, 'for ID', id)
-        const callback = this.callbackStore[id][error]
-        delete this.callbackStore[id]
+        const store = this.callbackStore[id]
+        const callback = update ? store[2] : store[error]
+        if (!update) delete this.callbackStore[id]
         callback(e.data.data)
     }
 
-    sendPromise(data : any) {
+    sendPromise(data : any, update : (data : any) => any = () => undefined) {
         const id = this.idCounter++
         console.log('Posting message...', id)
         this.postMessage({id: id, data: data})
         return new Promise((resolve, reject) => {
-            this.callbackStore[id] = [resolve, reject]
+            this.callbackStore[id] = [resolve, reject, update]
         })
+    }
+}
+
+async function handleUpdate(req : ServerRequest, data : {action: string, [x : string] : any}) {
+    switch(data.action) {
+        case 'setCookie': {
+            console.log('Setting cookie! ', data)
+            await req.cookies.set(data.name, data.value)
+        }
+        break
+        case 'setHeader': {
+            console.log('Setting cookie! ', data)
+            await req.responseHeaders.set(data.name, data.value)
+        }
+        break
+        default: {
+            console.log('Recevied update but no matching action! ', data)
+        }
     }
 }

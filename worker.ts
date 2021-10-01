@@ -6,20 +6,26 @@ let mods = {}
 //console.log('fetching', await fetch("https://deno.land/"))
 console.log('worker initialized')
 
+const SESSION_EXPIRATION = 10 // minutes
+const SESSION_COOKIE_ID = 'DENOSESSID'
+const sessions: {[sessid : string] : {[x : string]: any}} = {}
 
-let fileCache : {[filename : string]: number} = {}
+const fileCache : {[filename : string]: number} = {}
 
-//@ts-ignore
+//@ts-ignore: onmessage not supported
 self.onmessage = async (e : MessageEvent) => {
     try {
         let success : (data : any) => any
         let failure : (data : any) => any
+        let update : (data : any) => any
         let data : any
         if ('id' in e.data && 'data' in e.data) {
-            //@ts-ignore
-            success = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 0, data: data})
-            //@ts-ignore
-            failure = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 1, data: data})
+            //@ts-ignore: postmessage not supported by vscode
+            success = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 0, update: 0, data: data})
+            //@ts-ignore: postmessage not supported by vscode
+            update = (data : {action: string, [x: string] : any}) => self.postMessage({id: e.data.id, error: 0, update: 1, data: data})
+            //@ts-ignore: postmessage not supported by vscode
+            failure = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 1, update: 0, data: data})
             data = e.data.data
         } else {
             throw new Error('No ID or DATA passed in web worker request')
@@ -53,7 +59,7 @@ self.onmessage = async (e : MessageEvent) => {
                             } else if (filenameExt == 'ts') {
                                 const cachedFileURL = await parseFileCache(filename)
                                 const { parse } = await import(cachedFileURL)
-                                const response = await parse(params, mods)
+                                const response = await parse(params, mods, update)
                                 respond(response)
 
                             } else {
@@ -87,7 +93,7 @@ async function initializeWorker(path : string) {
         const { modules } = await import(path)
         mods = modules
         Object.freeze(mods)
-    } catch(err) {
+    } catch {
         Object.freeze(mods)
         throw new Error('None or bad config file: ' + path)
     } 
@@ -120,3 +126,19 @@ async function parseFileCache(filename : string) {
         throw new Error('File not found' + filename)
     }
 }
+
+class SessionInstance {
+    data: Record<string, unknown> = {}
+    update : () => any
+   
+    constructor(update : () => any, sessioncookie? : string) {
+      this.update = update
+      if (sessioncookie !== undefined) {
+        // if previous sessionid cookie is here - if yes, check to see if it matches with any in 'sessions'? expiration ?
+      }
+    }
+   
+    async start() {
+        
+    }
+  }
