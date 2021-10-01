@@ -1,8 +1,13 @@
-let modules = {}
+import * as eta from 'https://deno.land/x/eta/mod.ts';
+import type { ServerResponse } from 'https://deno.land/x/fcgi/mod.ts';
+let mods = {}
 
 // Find out how to post message back and forth??
 //console.log('fetching', await fetch("https://deno.land/"))
 console.log('worker initialized')
+
+
+let fileCache : {[filename : string]: number} = {}
 
 //@ts-ignore
 self.onmessage = async (e : MessageEvent) => {
@@ -12,9 +17,9 @@ self.onmessage = async (e : MessageEvent) => {
         let data : any
         if ('id' in e.data && 'data' in e.data) {
             //@ts-ignore
-            success = (data : any) => self.postMessage({id: e.data.id, status: 1, data: data})
+            success = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 0, data: data})
             //@ts-ignore
-            failure = (data : any) => self.postMessage({id: e.data.id, status: 0, data: data})
+            failure = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 1, data: data})
             data = e.data.data
         } else {
             throw new Error('No ID or DATA passed in web worker request')
@@ -31,19 +36,45 @@ self.onmessage = async (e : MessageEvent) => {
                             failure({message: 'Failed to initialize..' + err})
                         }
                     break
-                    case 'req':
-                        console.log('req from inside:', data.req, data.cookies)
-                        success({message: 'yay!'})
+                    case 'req': {
+                        const params = data.params
+                        const cookies = data.cookies
+                        //console.log('req from inside:', params, cookies)
+                        const filename = params.get("SCRIPT_FILENAME")
+                        if (filename !== undefined) {
+
+                            const respond = (responseArgs : Record<string, unknown>) => success(responseArgs)
+
+                            const filenameExtArr = filename.split('.')
+                            const filenameExt = filenameExtArr[filenameExtArr.length-1]
+                            if (filenameExt == 'ejs') {
+                                const response = await eta.renderFile(filename, {params: params, modules: mods})
+                                await respond({body: response as string})
+                            } else if (filenameExt == 'ts') {
+                                const cachedFileURL = await parseFileCache(filename)
+                                const { parse } = await import(cachedFileURL)
+                                const response = await parse(params, mods)
+                                respond(response)
+
+                            } else {
+                                throw new Error('Error: Neither ejs nor ts extension: ' + filename)
+                            }
+                            
+                        } else {
+                            throw new Error('script filename undefined')
+                        }
+                    }
                     break
                     default:
                         throw new Error(`action '${data.action}' not recognised`)
+                    break
                 }
             } else {
                 throw new Error('no action in data')
             }
 
         } catch(err) {
-            failure({message: err})
+            failure({message: 'There was an error:' + err})
         }
 
     } catch(err) {
@@ -54,9 +85,38 @@ self.onmessage = async (e : MessageEvent) => {
 async function initializeWorker(path : string) {
     try {
         const { modules } = await import(path)
-        Object.freeze(modules)
+        mods = modules
+        Object.freeze(mods)
     } catch(err) {
-        Object.freeze(modules)
+        Object.freeze(mods)
         throw new Error('None or bad config file: ' + path)
     } 
+}
+
+async function parseFileCache(filename : string) {
+
+    const file = await Deno.stat(filename)
+
+    if (file.isFile) {
+        const time = file.mtime?.getTime() || 0
+        //console.log("Last modified:", time);
+        if (filename in fileCache) {
+            if (time > fileCache[filename]) {
+                // Update cache
+                //console.log('file changed, updating: ', time)
+                fileCache[filename] = time
+            } else {
+                //console.log('file unchanged: ', time)
+            }
+        } else {
+            // No index, create new
+            //console.log('no index, create new: ', time)
+            fileCache[filename] = time
+        }
+        
+        return filename + '#' + fileCache[filename]
+
+    } else {
+        throw new Error('File not found' + filename)
+    }
 }

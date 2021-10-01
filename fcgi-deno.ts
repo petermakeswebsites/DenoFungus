@@ -1,4 +1,5 @@
 import {fcgi} from 'https://deno.land/x/fcgi/mod.ts';
+import type {ServerResponse} from 'https://deno.land/x/fcgi/mod.ts';
 import * as eta from 'https://deno.land/x/eta/mod.ts';
 
 console.log(`Started on 127.0.0.1:8989`);
@@ -7,7 +8,6 @@ const INI_FILE = 'denoconfig.ts'
 const TIMEOUT = 10
 
 
-let fileCache : {[filename : string]: number} = {}
 let workerCache : {[server: string]: PromiseWorker} = {}
 
 fcgi.listen
@@ -21,59 +21,12 @@ fcgi.listen
         // Server_name
         req.responseHeaders.set('Content-Type', 'text/html')
         try {
-
-            // Initializing or getting worker for this document root
+            //Initializing or getting worker for this document root
             const worker = await getWorker(req.params.get("DOCUMENT_ROOT"))
-            const res = await worker.sendPromise({action: 'req', req: req.params, cookies: req.cookies})
-            console.log('res: ', res)
-
-            const filename = req.params.get("SCRIPT_FILENAME")
-            if (filename !== undefined) {
-
-                const filenameExtArr = filename.split('.')
-                const filenameExt = filenameExtArr[filenameExtArr.length-1]
-                const modules = {
-                    eta: eta,
-                }
-                if (filenameExt == 'ejs') {
-                    const response = await eta.renderFile(filename, {req: req, modules: modules})
-                    await req.respond({body: response as string})
-                } else if (filenameExt == 'ts') {
-
-                    const file = await Deno.stat(filename)
-
-                    if (file.isFile) {
-                        const time = file.mtime?.getTime() || 0
-                        console.log("Last modified:", time);
-                        if (filename in fileCache) {
-                            if (time > fileCache[filename]) {
-                                // Update cache
-                                console.log('file changed, updating: ', time)
-                                fileCache[filename] = time
-                            } else {
-                                console.log('file unchanged: ', time)
-                            }
-                        } else {
-                            // No index, create new
-                            console.log('no index, create new: ', time)
-                            fileCache[filename] = time
-                        }
-                        
-                        const cachedFileURL = filename + '#' + fileCache[filename]
-                        const parseModule = await import(cachedFileURL)
-                        await parseModule.parse(req, modules)
-
-                    } else {
-                        throw new Error('Error: File not found' + filename)
-                    }
-
-                } else {
-                    throw new Error('Error: Neither ejs nor ts extension: ' + filename)
-                }
-                
-             } else {
-                 throw new Error('script filename undefined')
-             }
+            console.log('whats happening... ')
+            const res = (await worker.sendPromise({action: 'req', params: req.params, cookies: req.cookies})) as ServerResponse
+            await req.respond(res)
+            
         } catch(err) {
             console.log(err)
             await req.respond({body: err.message})
@@ -124,8 +77,6 @@ class PromiseWorker extends Worker {
         this.onmessage = (e) => {
             this.handleMessage(e)
         }
-        this.onerror = (e) => {
-        }
     }
 
     private idCounter = 0
@@ -133,14 +84,16 @@ class PromiseWorker extends Worker {
 
     private handleMessage(e : MessageEvent) {
         const id = e.data.id
-        const callback = this.callbackStore[id][0]
+        const error = e.data.error
+        console.log('Error: ', error, 'for ID', id)
+        const callback = this.callbackStore[id][error]
         delete this.callbackStore[id]
         callback(e.data.data)
     }
 
     sendPromise(data : any) {
         const id = this.idCounter++
-        console.log('posting message...')
+        console.log('Posting message...', id)
         this.postMessage({id: id, data: data})
         return new Promise((resolve, reject) => {
             this.callbackStore[id] = [resolve, reject]
