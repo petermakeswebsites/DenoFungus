@@ -24,10 +24,10 @@ fcgi.listen
             //Initializing or getting worker for this document root
             const worker = await getWorker(req.params.get("DOCUMENT_ROOT"))
 
-            console.log('whats happening... ')
             const update = async (data : any) => {
                 return await handleUpdate(req, data)
             }
+            req.cookies.entries() // Somehow this initializes the map and allows it to be passed?
             const res = (await worker.sendPromise({action: 'req', params: req.params, cookies: req.cookies}, update)) as ServerResponse
             await req.respond(res)
             
@@ -87,6 +87,7 @@ class PromiseWorker extends Worker {
     private callbackStore : {[id : number]: [(value : unknown) => any, (reason?: any) => any, (data : any) => any]} = {}
 
     private handleMessage(e : MessageEvent) {
+
         const id = e.data.id
         const error = e.data.error
         const update = e.data.update || 0
@@ -115,8 +116,13 @@ async function handleUpdate(req : ServerRequest, data : {action: string, [x : st
             await req.cookies.set(data.name, data.value)
         }
         break
+        case 'deleteCookie': {
+            console.log('Deleting cookie! ', data)
+            await req.cookies.delete(data.name)
+        }
+        break
         case 'setHeader': {
-            console.log('Setting cookie! ', data)
+            console.log('Setting header! ', data)
             await req.responseHeaders.set(data.name, data.value)
         }
         break

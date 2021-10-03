@@ -8,7 +8,7 @@ console.log('worker initialized')
 
 const SESSION_EXPIRATION = 10 // minutes
 const SESSION_COOKIE_ID = 'DENOSESSID'
-const sessions: {[sessid : string] : {[x : string]: any}} = {}
+const sessions: {[sessid : string] : {data: {[x : string]: any}, last : number}} = {}
 
 const fileCache : {[filename : string]: number} = {}
 
@@ -44,7 +44,13 @@ self.onmessage = async (e : MessageEvent) => {
                     break
                     case 'req': {
                         const params = data.params
-                        const cookies = data.cookies
+                        console.log('data cookies:', JSON.stringify(data.cookies))
+
+    
+
+                        const cookies = new workerCookies(update, data.cookies)
+                        const session = new SessionInstance(update, cookies)
+                        const req = {params: params, cookies: cookies, session: session}
                         //console.log('req from inside:', params, cookies)
                         const filename = params.get("SCRIPT_FILENAME")
                         if (filename !== undefined) {
@@ -54,12 +60,12 @@ self.onmessage = async (e : MessageEvent) => {
                             const filenameExtArr = filename.split('.')
                             const filenameExt = filenameExtArr[filenameExtArr.length-1]
                             if (filenameExt == 'ejs') {
-                                const response = await eta.renderFile(filename, {params: params, modules: mods})
+                                const response = await eta.renderFile(filename, {req: req, modules: mods})
                                 await respond({body: response as string})
                             } else if (filenameExt == 'ts') {
                                 const cachedFileURL = await parseFileCache(filename)
                                 const { parse } = await import(cachedFileURL)
-                                const response = await parse(params, mods, update)
+                                const response = await parse(req, mods, update)
                                 respond(response)
 
                             } else {
@@ -129,16 +135,95 @@ async function parseFileCache(filename : string) {
 
 class SessionInstance {
     data: Record<string, unknown> = {}
-    update : () => any
+    sessid = ''
+    cookies : Map<string, string>
+    update : (data: any) => any
    
-    constructor(update : () => any, sessioncookie? : string) {
+    constructor(update : (data: any) => any, cookies : workerCookies) {
       this.update = update
-      if (sessioncookie !== undefined) {
-        // if previous sessionid cookie is here - if yes, check to see if it matches with any in 'sessions'? expiration ?
-      }
+      this.cookies = cookies
     }
    
-    async start() {
-        
+    start() {
+        const potentialSessionCookie = this.cookies.get(SESSION_COOKIE_ID)
+        if (potentialSessionCookie !== undefined) {
+            console.log('Session cookie not undefined: ', potentialSessionCookie)
+            // Check if it matches one in db
+            if (potentialSessionCookie in sessions) {
+                const SSID = potentialSessionCookie
+                console.log('Session cookie hit!')
+                // Check if expired
+                const now = Date.now() / 1000
+                if ((now - sessions[SSID].last) > (SESSION_EXPIRATION*60)) {
+                    // Expired
+                    console.log('Session expired... creating new one')
+                    delete sessions[SSID]
+                    this.newSession()
+                } else {
+                    console.log('Session not expired, retrieving')
+                    sessions[SSID].last = now
+                    this.data = sessions[SSID].data
+                    this.sessid = SSID
+                }
+            } else {
+                console.log('Session cookie miss!')
+                this.newSession()
+            }
+            
+        } else {
+            this.newSession()
+        }
     }
-  }
+
+    destroy() {
+        delete sessions[this.sessid]
+        this.sessid = ''
+        this.data = {}
+        this.cookies.delete(SESSION_COOKIE_ID)
+    }
+
+    private newSession() {
+        const now = Date.now() / 1000
+        const sessid = this.generateUniqueString()
+        console.log('No session cookie, creating new one: ', sessid)
+        this.cookies.set(SESSION_COOKIE_ID, sessid)
+        sessions[sessid] = {
+            last: now,
+            data: this.data
+        }
+        this.sessid = sessid
+    }
+
+    private generateUniqueString() {
+        const newStr = () => Array.from({length:64}, () => String.fromCharCode((Math.random() * 24 + 65) | 0)).join('')
+        let ssid = newStr()
+        while (ssid in sessions) { ssid = newStr() }
+        return ssid
+    }
+}
+
+class workerCookies extends Map{
+    update : (data: any) => any = () => undefined
+
+    constructor(update : (data: any) => any, cookies : Map<string, string>) {
+        super()
+        for (const [name, val] of cookies.entries()) { super.set(name, val) }
+        this.update = update
+    }
+
+    set(name : string , value : string ){
+        this.update({action: 'setCookie', name: name, value: value})
+        return super.set(name, value);
+    }
+
+    delete(name: string) {
+        this.update({action: 'deleteCookie', name: name})
+        return super.delete(name)
+    }
+
+    list() {
+        let cookieList : Record<string, string> = {}
+        for (let [name, val] of super.entries()) { cookieList[name] = val}
+        return cookieList
+    }
+}
