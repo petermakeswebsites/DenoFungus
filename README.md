@@ -178,4 +178,4 @@ Todo:
 ## License
 
 MIT License - fork it, sell it, put it on a donkey - I don't care!
-- (Pete)[https://pmw.ltd]
+- [Pete](https://pmw.ltd)
