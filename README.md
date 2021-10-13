@@ -19,7 +19,9 @@ A FastCGI server that listens to requests and then dynamically imports the file 
 - [Usage](#usage)
 - [What's the point?](#why)
 - [Support](#support)
+- [FAQ](#FAQ)
 - [Contributing](#contributing)
+- [License](#license)
 
 ## Installation
 
@@ -157,6 +159,12 @@ Please note that there are many reasons why you **wouldn't** want to use this, b
 
 Please [open an issue](https://github.com/petermakeswebsites/denofungus/issues/new) for support.
 
+## FAQ
+
+### This isn't like PHP, can we have it parse HTML first and enclose TypeScript in <% %> tags?
+
+This was my idea too. I was using Eta as a templating engine which worked well, but Eta's VSCode plugin didn't do any live type-checking with TypeScript, which sort of defeated the purpose. I'm open to other alternatives. It would be relatively easy to implement.
+
 ## Contributing
 
 Security, performance, memory leaks. If anything occurs to you, please let me know!
@@ -167,3 +175,6 @@ Todo:
 - [ ] Make a simple and easy way to get request types for the main() function (session, cookies, params)
 - [ ] Find a good templating engine to use for another extension, making it HTML-first, TypeScript-second.
 
+## License
+
+MIT License - fork it, sell it, put it on a donkey - I don't care!
