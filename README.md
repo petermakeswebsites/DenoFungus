@@ -102,7 +102,7 @@ DenoFungus has a built-in session manager that works just like PHPs (as far as I
 
 ### Modules
 
-Modules are shared for every worker. They are created in the document root directory under a special file named `fungusconfig.ts`. If there is no file, there will be no modules.
+Modules are shared for every worker. They are sought in the document root directory under a special file named `fungusconfig.ts`. If there is no file, there will be no modules.
 
 Example of a `fungusconfig.ts`
 ```typescript
