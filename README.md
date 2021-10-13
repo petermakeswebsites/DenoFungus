@@ -35,7 +35,7 @@ Now DenoFungus should be running. Assuming you've connected your web server to D
 
 Example:
 
-public_html/test.ts
+`public_html/test.ts`
 ```typescript
 export async function main() {
 
