@@ -6,7 +6,7 @@ let mods = {}
 //console.log('fetching', await fetch("https://deno.land/"))
 console.log('worker initialized')
 
-const SESSION_EXPIRATION = 10 // minutes
+const SESSION_EXPIRATION = 60 // minutes
 const SESSION_COOKIE_ID = 'DENOSESSID'
 const sessions: {[sessid : string] : {data: {[x : string]: any}, last : number}} = {}
 
@@ -15,79 +15,74 @@ const fileCache : {[filename : string]: number} = {}
 //@ts-ignore: onmessage not supported
 self.onmessage = async (e : MessageEvent) => {
     try {
-        let success : (data : any) => any
-        let failure : (data : any) => any
-        let update : (data : any) => any
-        let data : any
         if ('id' in e.data && 'data' in e.data) {
             //@ts-ignore: postmessage not supported by vscode
-            success = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 0, update: 0, data: data})
+            const success = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 0, update: 0, data: data})
             //@ts-ignore: postmessage not supported by vscode
-            update = (data : {action: string, [x: string] : any}) => self.postMessage({id: e.data.id, error: 0, update: 1, data: data})
+            const update = (data : {action: string, [x: string] : any}) => self.postMessage({id: e.data.id, error: 0, update: 1, data: data})
             //@ts-ignore: postmessage not supported by vscode
-            failure = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 1, update: 0, data: data})
-            data = e.data.data
+            const failure = (data : ServerResponse) => self.postMessage({id: e.data.id, error: 1, update: 0, data: data})
+            const data = e.data.data
+            try {
+                if ('action' in data) {
+                    switch(data.action) {
+                        case 'init':
+                            try {
+                                await initializeWorker(data.configFile)
+                                success({body: 'Initialized'})
+                            } catch(err) {
+                                failure({body: 'Failed to initialize..' + err})
+                            }
+                        break
+                        case 'req': {
+                            const params = data.params
+                            console.log('data cookies:', JSON.stringify(data.cookies))
+
+                            const cookies = new WorkerCookies(update, data.cookies)
+                            const session = new SessionInstance(update, cookies)
+                            const req = {params: params, cookies: cookies, session: session}
+                            //console.log('req from inside:', params, cookies)
+                            const filename = params.get("SCRIPT_FILENAME")
+                            if (filename !== undefined) {
+
+                                const respond = (responseArgs : Record<string, unknown>) => success(responseArgs)
+
+                                const filenameExtArr = filename.split('.')
+                                const filenameExt = filenameExtArr[filenameExtArr.length-1]
+                                if (filenameExt == 'ejs') {
+                                    const response = await eta.renderFile(filename, {req: req, modules: mods})
+                                    await respond({body: response as string})
+                                } else if (filenameExt == 'ts') {
+                                    const cachedFileURL = await parseFileCache(filename)
+                                    const { parse } = await import(cachedFileURL)
+                                    const response = await parse(req, mods, update)
+                                    respond(response)
+
+                                } else {
+                                    throw new Error('Error: Neither ejs nor ts extension: ' + filename)
+                                }
+                                
+                            } else {
+                                throw new Error('script filename undefined')
+                            }
+                        }
+                        break
+                        default:
+                            throw new Error(`action '${data.action}' not recognised`)
+                        break
+                    }
+                } else {
+                    throw new Error('no action in data')
+                }
+
+            } catch(err) {
+                failure({body: 'There was an error:' + err})
+            }
+            
         } else {
             throw new Error('No ID or DATA passed in web worker request')
         }
 
-        try {
-            if ('action' in data) {
-                switch(data.action) {
-                    case 'init':
-                        try {
-                            await initializeWorker(data.configFile)
-                            success({message: 'Initialized'})
-                        } catch(err) {
-                            failure({message: 'Failed to initialize..' + err})
-                        }
-                    break
-                    case 'req': {
-                        const params = data.params
-                        console.log('data cookies:', JSON.stringify(data.cookies))
-
-    
-
-                        const cookies = new workerCookies(update, data.cookies)
-                        const session = new SessionInstance(update, cookies)
-                        const req = {params: params, cookies: cookies, session: session}
-                        //console.log('req from inside:', params, cookies)
-                        const filename = params.get("SCRIPT_FILENAME")
-                        if (filename !== undefined) {
-
-                            const respond = (responseArgs : Record<string, unknown>) => success(responseArgs)
-
-                            const filenameExtArr = filename.split('.')
-                            const filenameExt = filenameExtArr[filenameExtArr.length-1]
-                            if (filenameExt == 'ejs') {
-                                const response = await eta.renderFile(filename, {req: req, modules: mods})
-                                await respond({body: response as string})
-                            } else if (filenameExt == 'ts') {
-                                const cachedFileURL = await parseFileCache(filename)
-                                const { parse } = await import(cachedFileURL)
-                                const response = await parse(req, mods, update)
-                                respond(response)
-
-                            } else {
-                                throw new Error('Error: Neither ejs nor ts extension: ' + filename)
-                            }
-                            
-                        } else {
-                            throw new Error('script filename undefined')
-                        }
-                    }
-                    break
-                    default:
-                        throw new Error(`action '${data.action}' not recognised`)
-                    break
-                }
-            } else {
-                throw new Error('no action in data')
-            }
-
-        } catch(err) {
-            failure({message: 'There was an error:' + err})
-        }
 
     } catch(err) {
         console.log('Web worker error: ', err)
@@ -139,7 +134,7 @@ class SessionInstance {
     cookies : Map<string, string>
     update : (data: any) => any
    
-    constructor(update : (data: any) => any, cookies : workerCookies) {
+    constructor(update : (data: any) => any, cookies : WorkerCookies) {
       this.update = update
       this.cookies = cookies
     }
@@ -202,7 +197,7 @@ class SessionInstance {
     }
 }
 
-class workerCookies extends Map{
+class WorkerCookies extends Map{
     update : (data: any) => any = () => undefined
 
     constructor(update : (data: any) => any, cookies : Map<string, string>) {
@@ -222,8 +217,14 @@ class workerCookies extends Map{
     }
 
     list() {
-        let cookieList : Record<string, string> = {}
-        for (let [name, val] of super.entries()) { cookieList[name] = val}
+        const cookieList : Record<string, string> = {}
+        for (const [name, val] of super.entries()) { cookieList[name] = val}
         return cookieList
     }
+}
+
+export type RequestObject = {
+    params: Map<string, string>,
+    session: SessionInstance,
+    cookies: WorkerCookies
 }

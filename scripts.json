@@ -1,0 +1,13 @@
+{
+  "$schema": "https://deno.land/x/denon@2.4.9/schema.json",
+  "scripts": {
+    "start": {
+      "cmd": "deno run --allow-all --no-check --unstable denofungus.ts",
+      "desc": "run ts no typecheck"
+    },
+    "check": {
+      "cmd": "deno run --allow-all --unstable denofungus.ts",
+      "desc": "run ts with typecheck"
+    }
+  }
+}
