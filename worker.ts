@@ -131,8 +131,8 @@ async function parseFileCache(filename : string) {
 class SessionInstance {
     data: Record<string, unknown> = {}
     sessid = ''
-    cookies : Map<string, string>
-    update : (data: any) => any
+    private cookies : Map<string, string>
+    private update : (data: any) => any
    
     constructor(update : (data: any) => any, cookies : WorkerCookies) {
       this.update = update
@@ -198,7 +198,7 @@ class SessionInstance {
 }
 
 class WorkerCookies extends Map{
-    update : (data: any) => any = () => undefined
+    private update : (data: any) => any = () => undefined
 
     constructor(update : (data: any) => any, cookies : Map<string, string>) {
         super()
