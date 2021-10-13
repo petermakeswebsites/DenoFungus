@@ -89,7 +89,7 @@ DenoFungus has a built-in session manager that works just like PHPs (as far as I
 ```typescript
 ...
   req.session.start()
-  if !('counter' in req.session.data) {
+  if (!('counter' in req.session.data)) {
       req.session.data["counter"] = 0
   }
   const counter = req.session.data["counter"]++
