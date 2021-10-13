@@ -31,7 +31,7 @@ Download this project either through git or downloading the zip and extracting s
 
 In your terminal, run `deno run --allow-read --allow-net --unstable denofungus.ts` from the project directory.
 
-Now DenoFungus should be running. Assuming you've connected your web server to DenoFungus (see [installation](#installation)), create a file, just like PHP, which imports a function. DenoFungus will automatically detect whne the file has changed and re-import any modifications.
+Now DenoFungus should be running. Assuming you've connected your web server to DenoFungus (see [installation](#installation)), create a file in your normal web directory, just like you would with PHP. Export a function called main. This will be what DenoFungus parses. DenoFungus will automatically detect when the file has changed and re-import any modifications.
 
 Example:
 
