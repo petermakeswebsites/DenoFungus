@@ -46,7 +46,7 @@ export async function main() {
 }
 ```
 
-Navigating to yourwebsite.com/test.ts should yield `'hello world!'`
+Navigating to `yourwebsite.com/test.ts` should yield `'hello world!'`
 
 ### Request Managament
 
